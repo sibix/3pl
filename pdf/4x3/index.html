@@ -1,0 +1,502 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Grid Imposer — arrange PDF pages into a grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --paper:#EFEBE1;
+    --paper-dark:#E4DFCF;
+    --ink:#1D3557;
+    --ink-soft:#4A5D80;
+    --graphite:#33322E;
+    --hairline:#C9C2B3;
+    --signal:#E85D2C;
+    --signal-dark:#C94A1F;
+    --ok:#3B7A57;
+    --warn:#B54708;
+    --white:#FBFAF6;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      linear-gradient(var(--hairline) 1px, transparent 1px),
+      linear-gradient(90deg, var(--hairline) 1px, transparent 1px);
+    background-size:28px 28px;
+    color:var(--graphite);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 60px;}
+  header{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;flex-wrap:wrap;}
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:26px;font-weight:700;color:var(--ink);
+    margin:0;letter-spacing:-0.01em;
+  }
+  .badge{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    background:var(--ink);color:var(--white);padding:3px 8px;border-radius:3px;
+  }
+  .sub{color:var(--ink-soft);font-size:14px;margin:0 0 26px;}
+
+  .layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start;}
+  @media (max-width:860px){.layout{grid-template-columns:1fr;}}
+
+  .panel{
+    background:var(--white);
+    border:1px solid var(--hairline);
+    border-radius:10px;
+    padding:20px 20px 22px;
+  }
+  .panel + .panel{margin-top:18px;}
+  .panel h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--ink);margin:0 0 14px;display:flex;align-items:center;gap:8px;
+  }
+  .panel h2 .n{
+    font-family:'JetBrains Mono',monospace;
+    background:var(--paper-dark);color:var(--ink-soft);
+    width:18px;height:18px;border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:10px;
+  }
+
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row4{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field{margin-bottom:12px;}
+  .field:last-child{margin-bottom:0;}
+  label{
+    display:block;font-size:11.5px;color:var(--ink-soft);
+    margin-bottom:5px;font-weight:500;letter-spacing:.01em;
+  }
+  .mm-input{position:relative;}
+  .mm-input input{
+    width:100%;
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    padding:8px 30px 8px 10px;
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    background:var(--paper);
+    color:var(--graphite);
+    outline:none;
+    transition:border-color .15s;
+  }
+  .mm-input input:focus{border-color:var(--ink);}
+  .mm-input::after{
+    content:'mm';
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;color:var(--ink-soft);pointer-events:none;
+  }
+
+  .margin-diagram{
+    display:grid;grid-template-columns:1fr 60px 1fr;grid-template-rows:60px 1fr 60px;
+    gap:6px;margin-top:2px;
+  }
+  .margin-diagram .m-top{grid-column:2;grid-row:1;}
+  .margin-diagram .m-left{grid-column:1;grid-row:2;}
+  .margin-diagram .m-right{grid-column:3;grid-row:2;}
+  .margin-diagram .m-bottom{grid-column:2;grid-row:3;}
+  .margin-diagram .m-center{
+    grid-column:2;grid-row:2;
+    border:1px dashed var(--hairline);border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--hairline);
+  }
+  .margin-diagram label{text-align:center;font-size:10px;}
+  .margin-diagram .mm-input input{padding:6px 22px 6px 6px;font-size:12px;text-align:center;}
+  .margin-diagram .mm-input::after{font-size:9px;right:6px;}
+
+  .file-drop{
+    border:1.5px dashed var(--hairline);
+    border-radius:8px;
+    padding:20px 14px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    background:var(--paper);
+  }
+  .file-drop:hover{border-color:var(--ink);background:var(--white);}
+  .file-drop.has-file{border-color:var(--ok);border-style:solid;}
+  .file-drop input{display:none;}
+  .file-drop .fname{
+    font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink);
+    margin-top:4px;word-break:break-all;
+  }
+  .file-drop .hint{font-size:12px;color:var(--ink-soft);}
+
+  .stat-strip{
+    display:flex;gap:0;border:1px solid var(--hairline);border-radius:8px;overflow:hidden;
+    background:var(--white);margin-bottom:18px;
+  }
+  .stat{flex:1;padding:12px 14px;border-right:1px solid var(--hairline);}
+  .stat:last-child{border-right:none;}
+  .stat .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);}
+  .stat .v{font-family:'JetBrains Mono',monospace;font-size:19px;color:var(--ink);font-weight:600;margin-top:2px;}
+  .stat .v.warn{color:var(--warn);}
+
+  .preview-box{
+    background:var(--white);border:1px solid var(--hairline);border-radius:10px;
+    padding:18px;display:flex;align-items:center;justify-content:center;
+    min-height:420px;
+  }
+  .preview-empty{color:var(--ink-soft);font-size:13px;text-align:center;font-family:'JetBrains Mono',monospace;}
+
+  button.primary{
+    width:100%;
+    background:var(--signal);color:var(--white);
+    border:none;border-radius:8px;
+    padding:13px 18px;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:14.5px;font-weight:600;letter-spacing:.01em;
+    cursor:pointer;
+    transition:background .15s, transform .05s;
+    margin-top:4px;
+  }
+  button.primary:hover:not(:disabled){background:var(--signal-dark);}
+  button.primary:active:not(:disabled){transform:scale(.99);}
+  button.primary:disabled{background:var(--hairline);color:#8b8578;cursor:not-allowed;}
+
+  .status{
+    font-family:'JetBrains Mono',monospace;font-size:12.5px;
+    margin-top:10px;min-height:16px;color:var(--ink-soft);
+  }
+  .status.ok{color:var(--ok);}
+  .status.err{color:var(--warn);}
+
+  .checkline{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--ink-soft);}
+  .checkline input{accent-color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Grid Imposer</h1>
+    <span class="badge">PDF → Sheet</span>
+  </header>
+  <p class="sub">Arrange every page of an uploaded PDF into a grid on a new sheet — set the sheet size, cell size, borders and gaps in millimetres.</p>
+
+  <div class="layout">
+    <div class="left">
+      <div class="panel">
+        <h2><span class="n">1</span>Page size</h2>
+        <div class="row2">
+          <div class="field mm-input">
+            <label>Width</label>
+            <input type="number" id="pageW" value="210" step="any" inputmode="decimal">
+          </div>
+          <div class="field mm-input">
+            <label>Height</label>
+            <input type="number" id="pageH" value="297" step="any" inputmode="decimal">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">2</span>Grid cell size</h2>
+        <div class="row2">
+          <div class="field mm-input">
+            <label>Cell width</label>
+            <input type="number" id="cellW" value="100" step="any" inputmode="decimal">
+          </div>
+          <div class="field mm-input">
+            <label>Cell height</label>
+            <input type="number" id="cellH" value="72" step="any" inputmode="decimal">
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field mm-input">
+            <label>Horizontal gap</label>
+            <input type="number" id="gapH" value="3" step="any" inputmode="decimal">
+          </div>
+          <div class="field mm-input">
+            <label>Vertical gap</label>
+            <input type="number" id="gapV" value="2" step="any" inputmode="decimal">
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">3</span>Page borders</h2>
+        <div class="margin-diagram">
+          <div class="m-top field mm-input"><label>Top</label><input type="number" id="mTop" value="3" step="any"></div>
+          <div class="m-left field mm-input"><label>Left</label><input type="number" id="mLeft" value="3" step="any"></div>
+          <div class="m-center">sheet</div>
+          <div class="m-right field mm-input"><label>Right</label><input type="number" id="mRight" value="0" step="any"></div>
+          <div class="m-bottom field mm-input"><label>Bottom</label><input type="number" id="mBottom" value="0" step="any"></div>
+        </div>
+        <label class="checkline"><input type="checkbox" id="showGuides"> Draw hairline guides around each cell</label>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">4</span>Source PDF</h2>
+        <div class="file-drop" id="dropZone">
+          <input type="file" id="fileInput" accept="application/pdf">
+          <div class="hint">Click to choose a PDF</div>
+          <div class="fname" id="fname"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="stat-strip">
+        <div class="stat"><div class="k">Columns</div><div class="v" id="statCols">0</div></div>
+        <div class="stat"><div class="k">Rows</div><div class="v" id="statRows">0</div></div>
+        <div class="stat"><div class="k">Cells / sheet</div><div class="v" id="statCells">0</div></div>
+        <div class="stat"><div class="k">Output sheets</div><div class="v" id="statSheets">—</div></div>
+      </div>
+
+      <div class="preview-box" id="previewBox">
+        <div class="preview-empty">Enter page &amp; cell dimensions<br>to see the layout preview</div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <h2><span class="n">5</span>Generate</h2>
+        <button class="primary" id="genBtn" disabled>Generate &amp; download PDF</button>
+        <div class="status" id="statusLine"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MM_TO_PT = 72/25.4;
+const $ = id => document.getElementById(id);
+
+let sourceBytes = null;
+let sourcePageCount = 0;
+let sourceFileName = '';
+
+function num(id){
+  const v = parseFloat($(id).value);
+  return isFinite(v) ? v : 0;
+}
+
+function getConfig(){
+  return {
+    pageW: num('pageW'), pageH: num('pageH'),
+    cellW: num('cellW'), cellH: num('cellH'),
+    gapH: num('gapH'), gapV: num('gapV'),
+    mTop: num('mTop'), mBottom: num('mBottom'),
+    mLeft: num('mLeft'), mRight: num('mRight'),
+  };
+}
+
+function computeGrid(cfg){
+  const usableW = cfg.pageW - cfg.mLeft - cfg.mRight;
+  const usableH = cfg.pageH - cfg.mTop - cfg.mBottom;
+  let cols = 0, rows = 0;
+  if (cfg.cellW > 0 && usableW > 0){
+    cols = Math.floor((usableW + cfg.gapH) / (cfg.cellW + cfg.gapH));
+  }
+  if (cfg.cellH > 0 && usableH > 0){
+    rows = Math.floor((usableH + cfg.gapV) / (cfg.cellH + cfg.gapV));
+  }
+  cols = Math.max(0, cols);
+  rows = Math.max(0, rows);
+  return { cols, rows, usableW, usableH };
+}
+
+function render(){
+  const cfg = getConfig();
+  const { cols, rows, usableW, usableH } = computeGrid(cfg);
+  const cells = cols * rows;
+
+  $('statCols').textContent = cols;
+  $('statRows').textContent = rows;
+  $('statCells').textContent = cells;
+  const cellsEl = $('statCells');
+  cellsEl.className = 'v' + (cells === 0 ? ' warn' : '');
+
+  if (sourcePageCount > 0){
+    const sheets = cells > 0 ? Math.ceil(sourcePageCount / cells) : 0;
+    $('statSheets').textContent = cells > 0 ? sheets : '—';
+    $('statSheets').className = 'v' + (cells === 0 ? ' warn' : '');
+  } else {
+    $('statSheets').textContent = '—';
+    $('statSheets').className = 'v';
+  }
+
+  renderPreview(cfg, cols, rows);
+  updateGenerateEnabled(cfg, cols, rows);
+}
+
+function renderPreview(cfg, cols, rows){
+  const box = $('previewBox');
+  if (cfg.pageW <= 0 || cfg.pageH <= 0){
+    box.innerHTML = '<div class="preview-empty">Enter page &amp; cell dimensions<br>to see the layout preview</div>';
+    return;
+  }
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${cfg.pageW} ${cfg.pageH}`);
+  const maxW = 480, maxH = 560;
+  const scale = Math.min(maxW / cfg.pageW, maxH / cfg.pageH);
+  svg.setAttribute('width', Math.max(1, cfg.pageW * scale));
+  svg.setAttribute('height', Math.max(1, cfg.pageH * scale));
+
+  const sheet = document.createElementNS(svgNS, 'rect');
+  sheet.setAttribute('x', 0); sheet.setAttribute('y', 0);
+  sheet.setAttribute('width', cfg.pageW); sheet.setAttribute('height', cfg.pageH);
+  sheet.setAttribute('fill', '#FBFAF6');
+  sheet.setAttribute('stroke', '#33322E');
+  sheet.setAttribute('stroke-width', Math.max(cfg.pageW, cfg.pageH) * 0.003);
+  svg.appendChild(sheet);
+
+  const marginRect = document.createElementNS(svgNS, 'rect');
+  marginRect.setAttribute('x', cfg.mLeft); marginRect.setAttribute('y', cfg.mTop);
+  marginRect.setAttribute('width', Math.max(0, cfg.pageW - cfg.mLeft - cfg.mRight));
+  marginRect.setAttribute('height', Math.max(0, cfg.pageH - cfg.mTop - cfg.mBottom));
+  marginRect.setAttribute('fill', 'none');
+  marginRect.setAttribute('stroke', '#C9C2B3');
+  marginRect.setAttribute('stroke-dasharray', `${Math.max(cfg.pageW,cfg.pageH)*0.01},${Math.max(cfg.pageW,cfg.pageH)*0.01}`);
+  marginRect.setAttribute('stroke-width', Math.max(cfg.pageW, cfg.pageH) * 0.0025);
+  svg.appendChild(marginRect);
+
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      const x = cfg.mLeft + c * (cfg.cellW + cfg.gapH);
+      const y = cfg.mTop + r * (cfg.cellH + cfg.gapV);
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', y);
+      rect.setAttribute('width', cfg.cellW); rect.setAttribute('height', cfg.cellH);
+      rect.setAttribute('fill', '#E8EEF5');
+      rect.setAttribute('stroke', '#1D3557');
+      rect.setAttribute('stroke-width', Math.max(cfg.pageW, cfg.pageH) * 0.002);
+      svg.appendChild(rect);
+    }
+  }
+
+  box.innerHTML = '';
+  box.appendChild(svg);
+}
+
+function updateGenerateEnabled(cfg, cols, rows){
+  const ok = sourceBytes && cols > 0 && rows > 0 && cfg.pageW > 0 && cfg.pageH > 0;
+  $('genBtn').disabled = !ok;
+}
+
+['pageW','pageH','cellW','cellH','gapH','gapV','mTop','mBottom','mLeft','mRight'].forEach(id=>{
+  $(id).addEventListener('input', render);
+});
+
+$('dropZone').addEventListener('click', ()=> $('fileInput').click());
+$('fileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  setStatus('Reading PDF…', '');
+  try{
+    const buf = await file.arrayBuffer();
+    const doc = await PDFLib.PDFDocument.load(buf);
+    sourceBytes = buf;
+    sourcePageCount = doc.getPageCount();
+    sourceFileName = file.name.replace(/\.pdf$/i, '');
+    $('fname').textContent = `${file.name} — ${sourcePageCount} page${sourcePageCount!==1?'s':''}`;
+    $('dropZone').classList.add('has-file');
+    setStatus('', '');
+    render();
+  }catch(err){
+    console.error(err);
+    sourceBytes = null; sourcePageCount = 0;
+    setStatus('Could not read that PDF. ' + err.message, 'err');
+    render();
+  }
+});
+
+function setStatus(msg, cls){
+  const el = $('statusLine');
+  el.textContent = msg;
+  el.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+$('genBtn').addEventListener('click', async ()=>{
+  const cfg = getConfig();
+  const { cols, rows } = computeGrid(cfg);
+  const cellsPerSheet = cols * rows;
+  if (!sourceBytes || cellsPerSheet <= 0) return;
+
+  $('genBtn').disabled = true;
+  setStatus('Building output PDF…', '');
+
+  try{
+    const outDoc = await PDFLib.PDFDocument.create();
+    const indices = Array.from({length: sourcePageCount}, (_,i)=>i);
+    const embeddedPages = await outDoc.embedPdf(sourceBytes, indices);
+
+    const pageWpt = cfg.pageW * MM_TO_PT;
+    const pageHpt = cfg.pageH * MM_TO_PT;
+    const cellWpt = cfg.cellW * MM_TO_PT;
+    const cellHpt = cfg.cellH * MM_TO_PT;
+    const gapHpt = cfg.gapH * MM_TO_PT;
+    const gapVpt = cfg.gapV * MM_TO_PT;
+    const mTopPt = cfg.mTop * MM_TO_PT;
+    const mLeftPt = cfg.mLeft * MM_TO_PT;
+    const showGuides = $('showGuides').checked;
+
+    const totalSheets = Math.ceil(sourcePageCount / cellsPerSheet);
+
+    for (let s = 0; s < totalSheets; s++){
+      const page = outDoc.addPage([pageWpt, pageHpt]);
+      for (let slot = 0; slot < cellsPerSheet; slot++){
+        const pageIndex = s * cellsPerSheet + slot;
+        if (pageIndex >= sourcePageCount) break;
+
+        const r = Math.floor(slot / cols);
+        const c = slot % cols;
+        const x = mLeftPt + c * (cellWpt + gapHpt);
+        const yTop = pageHpt - mTopPt - r * (cellHpt + gapVpt) - cellHpt;
+
+        if (showGuides){
+          page.drawRectangle({
+            x, y: yTop, width: cellWpt, height: cellHpt,
+            borderColor: PDFLib.rgb(0.79,0.76,0.70),
+            borderWidth: 0.5,
+          });
+        }
+
+        const ep = embeddedPages[pageIndex];
+        const scale = Math.min(cellWpt / ep.width, cellHpt / ep.height);
+        const drawW = ep.width * scale;
+        const drawH = ep.height * scale;
+        const offsetX = x + (cellWpt - drawW) / 2;
+        const offsetY = yTop + (cellHpt - drawH) / 2;
+
+        page.drawPage(ep, { x: offsetX, y: offsetY, width: drawW, height: drawH });
+      }
+    }
+
+    const outBytes = await outDoc.save();
+    const blob = new Blob([outBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sourceFileName || 'source'}-grid-${cols}x${rows}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+
+    setStatus(`Done — ${sourcePageCount} pages arranged onto ${totalSheets} sheet${totalSheets!==1?'s':''} (${cols}×${rows} grid).`, 'ok');
+  }catch(err){
+    console.error(err);
+    setStatus('Failed to generate PDF: ' + err.message, 'err');
+  }finally{
+    updateGenerateEnabled(getConfig(), cols, rows);
+  }
+});
+
+render();
+</script>
+</body>
+</html>
