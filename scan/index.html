@@ -1,0 +1,613 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Scan Stack</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --ink:#12181a;
+    --paper:#eef0ec;
+    --line:#12181a;
+    --accent:#ff5a1f;
+    --accent-dim:#c94a19;
+    --ok:#1f8a4c;
+    --mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    overscroll-behavior:none;
+  }
+  body{
+    display:flex; flex-direction:column;
+    min-height:100vh;
+    min-height:100dvh;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    padding:16px 18px 14px;
+    border-bottom:2px solid var(--ink);
+    display:flex; align-items:baseline; justify-content:space-between;
+    flex-shrink:0;
+  }
+  .brand{
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+    display:flex; align-items:center; gap:8px;
+  }
+  .brand .dot{
+    width:9px; height:9px; border-radius:50%;
+    background:var(--accent);
+    display:inline-block;
+  }
+  .brand .dot.live{ animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse{
+    0%,100%{ box-shadow:0 0 0 0 rgba(255,90,31,0.5); }
+    50%{ box-shadow:0 0 0 6px rgba(255,90,31,0); }
+  }
+  .count-tag{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--ink);
+    opacity:0.65;
+  }
+
+  /* ---------- scanner ---------- */
+  .scan-wrap{
+    position:relative;
+    width:100%;
+    aspect-ratio: 4/3;
+    max-height:46vh;
+    background:#000;
+    flex-shrink:0;
+    overflow:hidden;
+    border-bottom:2px solid var(--ink);
+  }
+  #reader{ width:100%; height:100%; }
+  #reader video{ width:100% !important; height:100% !important; object-fit:cover; }
+  /* hide default library chrome we don't want */
+  #reader__scan_region{ background:transparent !important; }
+  #reader__dashboard{ display:none !important; }
+  #reader__header_message{ display:none !important; }
+
+  .reticle{
+    position:absolute; inset:0;
+    pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .reticle-box{
+    width:78%;
+    max-width:340px;
+    aspect-ratio: 5/3;
+    position:relative;
+  }
+  .reticle-box .corner{
+    position:absolute;
+    width:22px; height:22px;
+    border-color:var(--accent);
+    border-style:solid;
+    border-width:0;
+  }
+  .corner.tl{ top:0; left:0; border-top-width:3px; border-left-width:3px; }
+  .corner.tr{ top:0; right:0; border-top-width:3px; border-right-width:3px; }
+  .corner.bl{ bottom:0; left:0; border-bottom-width:3px; border-left-width:3px; }
+  .corner.br{ bottom:0; right:0; border-bottom-width:3px; border-right-width:3px; }
+  .scanline{
+    position:absolute; left:4%; right:4%; height:2px;
+    background:var(--accent);
+    box-shadow:0 0 8px 1px var(--accent);
+    animation: sweep 2.1s ease-in-out infinite;
+  }
+  @keyframes sweep{
+    0%,100%{ top:8%; opacity:0.9; }
+    50%{ top:88%; opacity:0.5; }
+  }
+
+  .scan-status{
+    position:absolute; left:0; right:0; bottom:10px;
+    text-align:center;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:#fff;
+    opacity:0.8;
+    pointer-events:none;
+  }
+  .cam-off{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:10px;
+    color:#9aa39a;
+    font-family:var(--mono);
+    font-size:13px;
+    text-align:center;
+    padding:0 20px;
+  }
+  .cam-off button{
+    margin-top:6px;
+  }
+
+  .flash-ok{
+    position:absolute; inset:0;
+    background:var(--accent);
+    opacity:0;
+    pointer-events:none;
+  }
+  .flash-ok.hit{
+    animation: flash 0.28s ease-out;
+  }
+  @keyframes flash{
+    0%{ opacity:0.55; }
+    100%{ opacity:0; }
+  }
+
+  /* ---------- last scan banner ---------- */
+  .last-scan{
+    flex-shrink:0;
+    border-bottom:2px solid var(--ink);
+    padding:10px 18px;
+    display:flex; align-items:center; gap:10px;
+    min-height:20px;
+    background:var(--ink);
+    color:var(--paper);
+  }
+  .last-scan .lbl{
+    font-family:var(--mono); font-size:10px; letter-spacing:0.1em;
+    text-transform:uppercase; opacity:0.55; flex-shrink:0;
+  }
+  .last-scan .val{
+    font-family:var(--mono); font-size:14px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .last-scan.empty .val{ opacity:0.4; }
+
+  /* ---------- list ---------- */
+  main{
+    flex:1;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .empty-state{
+    padding:60px 24px;
+    text-align:center;
+    color:var(--ink);
+    opacity:0.45;
+    font-family:var(--mono);
+    font-size:13px;
+    line-height:1.6;
+  }
+  ul.log{
+    list-style:none; margin:0; padding:0;
+  }
+  ul.log li{
+    display:flex; align-items:center; gap:12px;
+    padding:11px 18px;
+    border-bottom:1px solid rgba(18,24,26,0.14);
+    animation: slidein 0.22s ease-out;
+  }
+  @keyframes slidein{
+    from{ opacity:0; transform:translateY(-6px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  ul.log li .idx{
+    font-family:var(--mono); font-size:11px;
+    color:var(--accent-dim);
+    width:26px; flex-shrink:0;
+    text-align:right;
+  }
+  ul.log li .body{ flex:1; min-width:0; }
+  ul.log li .code{
+    font-family:var(--mono); font-size:14px; font-weight:600;
+    word-break:break-all;
+  }
+  ul.log li .meta{
+    font-family:var(--mono); font-size:10.5px;
+    color:var(--ink); opacity:0.5;
+    margin-top:2px;
+  }
+  ul.log li .del{
+    flex-shrink:0;
+    width:26px; height:26px;
+    border:1px solid rgba(18,24,26,0.3);
+    background:none;
+    border-radius:50%;
+    color:var(--ink);
+    font-size:14px;
+    line-height:1;
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  ul.log li .del:active{ background:var(--ink); color:var(--paper); }
+
+  /* ---------- footer controls ---------- */
+  footer{
+    flex-shrink:0;
+    border-top:2px solid var(--ink);
+    padding:12px 14px calc(14px + env(safe-area-inset-bottom));
+    display:flex; gap:10px;
+    background:var(--paper);
+  }
+  button{
+    font-family:var(--mono);
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    padding:13px 10px;
+    border-radius:3px;
+    border:2px solid var(--ink);
+    background:var(--paper);
+    color:var(--ink);
+    cursor:pointer;
+  }
+  button:active{ transform:translateY(1px); }
+  button:disabled{ opacity:0.35; cursor:default; }
+
+  .btn-row{ display:flex; gap:10px; width:100%; }
+  .btn-toggle{ flex:1.1; background:var(--ink); color:var(--paper); }
+  .btn-toggle.stopped{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn-export{ flex:1; background:var(--ok); border-color:var(--ok); color:#fff; }
+  .btn-clear{ flex:0.7; }
+
+  .toast{
+    position:fixed;
+    left:50%; bottom:90px;
+    transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:var(--paper);
+    font-family:var(--mono); font-size:12.5px;
+    padding:10px 16px; border-radius:4px;
+    opacity:0; pointer-events:none;
+    transition: all 0.25s ease;
+    white-space:nowrap;
+    z-index:50;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="dot" id="liveDot"></span>Scan Stack</div>
+  <div class="count-tag" id="countTag">0 scanned</div>
+</header>
+
+<div class="scan-wrap">
+  <div id="reader"></div>
+  <div class="reticle" id="reticle">
+    <div class="reticle-box">
+      <div class="corner tl"></div><div class="corner tr"></div>
+      <div class="corner bl"></div><div class="corner br"></div>
+      <div class="scanline"></div>
+    </div>
+  </div>
+  <div class="scan-status" id="scanStatus">Point camera at barcode</div>
+  <div class="flash-ok" id="flashOk"></div>
+  <div class="cam-off" id="camOff" style="display:none;">
+    <div>Camera stopped</div>
+    <button id="startBtnInline">Start scanning</button>
+  </div>
+</div>
+
+<div class="last-scan empty" id="lastScanBar">
+  <span class="lbl">Last</span>
+  <span class="val" id="lastScanVal">— none yet —</span>
+</div>
+
+<main id="main">
+  <div class="empty-state" id="emptyState">
+    NO BARCODES YET<br>Aim the camera at a barcode to begin.
+  </div>
+  <ul class="log" id="logList"></ul>
+</main>
+
+<footer>
+  <div class="btn-row">
+    <button class="btn-toggle" id="toggleBtn">Pause</button>
+    <button class="btn-export" id="exportBtn" disabled>Export CSV</button>
+    <button class="btn-clear" id="clearBtn" disabled>Clear</button>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const state = {
+    scans: [],        // {code, format, time: Date}
+    scanning: false,
+    duplicateGuard: new Map(), // code -> timestamp of last accept
+  };
+
+  const readerEl = document.getElementById('reader');
+  const logList = document.getElementById('logList');
+  const emptyState = document.getElementById('emptyState');
+  const countTag = document.getElementById('countTag');
+  const lastScanBar = document.getElementById('lastScanBar');
+  const lastScanVal = document.getElementById('lastScanVal');
+  const toggleBtn = document.getElementById('toggleBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const flashOk = document.getElementById('flashOk');
+  const camOff = document.getElementById('camOff');
+  const reticle = document.getElementById('reticle');
+  const scanStatus = document.getElementById('scanStatus');
+  const liveDot = document.getElementById('liveDot');
+  const toast = document.getElementById('toast');
+  const startBtnInline = document.getElementById('startBtnInline');
+
+  let html5Qr = null;
+
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=> toast.classList.remove('show'), 1800);
+  }
+
+  function pad(n){ return n.toString().padStart(2,'0'); }
+
+  function fmtTime(d){
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function fmtDate(d){
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function vibrate(){
+    if(navigator.vibrate) navigator.vibrate(60);
+  }
+
+  function beep(){
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 1046;
+      g.gain.setValueAtTime(0.15, ctx.currentTime);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+      o.stop(ctx.currentTime + 0.13);
+    }catch(e){}
+  }
+
+  function renderList(){
+    if(state.scans.length === 0){
+      emptyState.style.display = 'block';
+      logList.innerHTML = '';
+      exportBtn.disabled = true;
+      clearBtn.disabled = true;
+      countTag.textContent = '0 scanned';
+      return;
+    }
+    emptyState.style.display = 'none';
+    exportBtn.disabled = false;
+    clearBtn.disabled = false;
+    countTag.textContent = `${state.scans.length} scanned`;
+
+    // render newest first for visibility, but keep true scan order in data/export
+    const items = state.scans.map((s, i) => {
+      return `<li data-idx="${i}">
+        <span class="idx">${String(i+1).padStart(2,'0')}</span>
+        <span class="body">
+          <div class="code">${escapeHtml(s.code)}</div>
+          <div class="meta">${s.format} · ${fmtDate(s.time)} ${fmtTime(s.time)}</div>
+        </span>
+        <button class="del" data-del="${i}" aria-label="Remove">✕</button>
+      </li>`;
+    }).reverse().join('');
+    logList.innerHTML = items;
+  }
+
+  function escapeHtml(str){
+    return str.replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  logList.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-del]');
+    if(!btn) return;
+    const idx = parseInt(btn.getAttribute('data-del'), 10);
+    state.scans.splice(idx, 1);
+    renderList();
+    updateLastScanBar();
+  });
+
+  function updateLastScanBar(){
+    if(state.scans.length === 0){
+      lastScanBar.classList.add('empty');
+      lastScanVal.textContent = '— none yet —';
+      return;
+    }
+    lastScanBar.classList.remove('empty');
+    const s = state.scans[state.scans.length - 1];
+    lastScanVal.textContent = s.code;
+  }
+
+  function acceptCode(code, format){
+    const now = Date.now();
+    const lastSeen = state.duplicateGuard.get(code);
+    if(lastSeen && (now - lastSeen) < 2500){
+      return; // debounce rapid duplicate reads of the same physical barcode
+    }
+    state.duplicateGuard.set(code, now);
+
+    state.scans.push({ code, format, time: new Date() });
+    renderList();
+    updateLastScanBar();
+    vibrate();
+    beep();
+    flashOk.classList.remove('hit');
+    void flashOk.offsetWidth;
+    flashOk.classList.add('hit');
+    showToast('Added: ' + code);
+
+    // scroll list to show newest (top, since newest-first)
+    document.getElementById('main').scrollTop = 0;
+  }
+
+  function onScanSuccess(decodedText, decodedResult){
+    let format = 'UNKNOWN';
+    try{
+      format = decodedResult?.result?.format?.formatName || 'UNKNOWN';
+    }catch(e){}
+    acceptCode(decodedText, format);
+  }
+
+  function onScanFailure(){
+    // fires continuously while no code is in frame; ignore silently
+  }
+
+  async function startScanning(){
+    if(state.scanning) return;
+    camOff.style.display = 'none';
+    reticle.style.display = 'flex';
+    scanStatus.style.display = 'block';
+
+    if(!html5Qr){
+      html5Qr = new Html5Qrcode('reader', { verbose:false });
+    }
+    const config = {
+      fps: 12,
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const w = Math.floor(viewfinderWidth * 0.78);
+        const h = Math.floor(w * 0.6);
+        return { width: w, height: h };
+      },
+      aspectRatio: 1.3333,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.CODE_93,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
+        Html5QrcodeSupportedFormats.AZTEC,
+        Html5QrcodeSupportedFormats.PDF_417
+      ]
+    };
+
+    try{
+      await html5Qr.start(
+        { facingMode: 'environment' },
+        config,
+        onScanSuccess,
+        onScanFailure
+      );
+      state.scanning = true;
+      toggleBtn.textContent = 'Pause';
+      toggleBtn.classList.remove('stopped');
+      liveDot.classList.add('live');
+      scanStatus.textContent = 'Point camera at barcode';
+    }catch(err){
+      state.scanning = false;
+      camOff.style.display = 'flex';
+      reticle.style.display = 'none';
+      scanStatus.style.display = 'none';
+      liveDot.classList.remove('live');
+      camOff.querySelector('div').textContent = 'Camera unavailable — check permissions';
+      console.error(err);
+    }
+  }
+
+  async function stopScanning(){
+    if(!state.scanning || !html5Qr) return;
+    try{
+      await html5Qr.stop();
+      html5Qr.clear();
+    }catch(e){}
+    state.scanning = false;
+    toggleBtn.textContent = 'Resume';
+    toggleBtn.classList.add('stopped');
+    liveDot.classList.remove('live');
+    camOff.style.display = 'flex';
+    camOff.querySelector('div').textContent = 'Camera paused';
+    reticle.style.display = 'none';
+    scanStatus.style.display = 'none';
+  }
+
+  toggleBtn.addEventListener('click', ()=>{
+    if(state.scanning) stopScanning();
+    else startScanning();
+  });
+  startBtnInline.addEventListener('click', startScanning);
+
+  clearBtn.addEventListener('click', ()=>{
+    if(state.scans.length === 0) return;
+    if(confirm('Clear all ' + state.scans.length + ' scanned barcodes?')){
+      state.scans = [];
+      state.duplicateGuard.clear();
+      renderList();
+      updateLastScanBar();
+    }
+  });
+
+  function csvEscape(val){
+    const s = String(val);
+    if(/[",\n]/.test(s)){
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  exportBtn.addEventListener('click', ()=>{
+    if(state.scans.length === 0) return;
+    const rows = [['#','Barcode','Format','Date','Time']];
+    state.scans.forEach((s, i)=>{
+      rows.push([
+        i+1,
+        s.code,
+        s.format,
+        fmtDate(s.time),
+        fmtTime(s.time)
+      ]);
+    });
+    const csvContent = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const now = new Date();
+    const filename = `barcodes_${fmtDate(now)}_${fmtTime(now).replace(/:/g,'-')}.csv`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 1500);
+    showToast('Exported ' + filename);
+  });
+
+  // kick off
+  renderList();
+  updateLastScanBar();
+  startScanning();
+
+  window.addEventListener('beforeunload', ()=>{
+    if(state.scanning && html5Qr){
+      try{ html5Qr.stop(); }catch(e){}
+    }
+  });
+})();
+</script>
+</body>
+</html>
