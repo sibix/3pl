@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reorder PDF by Barcode</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2027;
+    --paper:#fafaf8;
+    --panel:#ffffff;
+    --line:#e2e1dc;
+    --accent:#2b5d5a;
+    --accent-soft:#e4efed;
+    --warn:#b3541e;
+    --warn-soft:#fbeee3;
+    --ok:#2b5d5a;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    padding:28px 16px 60px;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 8px;
+  }
+  h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em;}
+  .sub{color:#6b6f76;font-size:14px;line-height:1.5;margin:0;}
+
+  .step{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px 20px 22px;
+    margin-bottom:16px;
+  }
+  .step-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .step-num{
+    font-family:var(--mono);
+    font-size:12px;
+    width:22px;height:22px;
+    border-radius:50%;
+    background:var(--accent);
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .step-title{font-size:15px;font-weight:600;}
+  .step-desc{font-size:13px;color:#6b6f76;margin:0 0 14px 32px;line-height:1.5;}
+
+  .drop{
+    margin-left:32px;
+    border:1.5px dashed var(--line);
+    border-radius:10px;
+    padding:22px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{border-color:var(--accent); background:var(--accent-soft);}
+  .drop input{display:none;}
+  .drop-label{font-size:13.5px;color:#444;}
+  .drop-label b{color:var(--accent);}
+  .filename{font-size:12.5px;color:#6b6f76;margin-top:6px;font-family:var(--mono);}
+
+  .progress-row{margin-left:32px;font-size:12.5px;color:#6b6f76;font-family:var(--mono);margin-top:10px;display:none;}
+  .bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px;}
+  .bar-fill{height:100%;background:var(--accent);width:0%;transition:width .2s;}
+
+  .pages{margin-left:32px;margin-top:14px;display:none;}
+  .page-row{
+    display:flex;align-items:center;gap:12px;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .page-row:last-child{border-bottom:none;}
+  .thumb{width:40px;height:52px;object-fit:cover;border:1px solid var(--line);border-radius:3px;flex-shrink:0;background:#fff;}
+  .page-idx{font-family:var(--mono);font-size:11px;color:#9a9d a3;color:#9a9da3;width:20px;flex-shrink:0;}
+  .barcode-input{
+    flex:1;
+    font-family:var(--mono);
+    font-size:13px;
+    padding:7px 9px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:#fff;
+  }
+  .barcode-input.missing{border-color:var(--warn); background:var(--warn-soft);}
+  .status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .status-dot.ok{background:var(--ok);}
+  .status-dot.bad{background:var(--warn);}
+
+  textarea{
+    margin-left:32px;
+    width:calc(100% - 32px);
+    min-height:130px;
+    font-family:var(--mono);
+    font-size:13px;
+    padding:12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    resize:vertical;
+    background:#fff;
+  }
+  .order-file{margin-left:32px;margin-top:8px;font-size:12.5px;}
+  .order-file label{color:var(--accent); cursor:pointer; text-decoration:underline;}
+  .order-file input{display:none;}
+
+  .btn{
+    font-family:inherit;
+    font-size:13.5px;
+    font-weight:600;
+    padding:10px 18px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    background:var(--accent);
+    color:#fff;
+  }
+  .btn:disabled{background:#c7cac6;cursor:not-allowed;}
+  .btn.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+  .generate-row{margin-left:32px;margin-top:14px;display:flex;align-items:center;gap:12px;}
+
+  .result{margin-left:32px;margin-top:16px;font-size:13.5px;line-height:1.6;}
+  .result .ok-line{color:var(--accent);font-weight:600;}
+  .result .warn-block{
+    background:var(--warn-soft);
+    border:1px solid #ecd3bc;
+    color:var(--warn);
+    padding:10px 12px;
+    border-radius:8px;
+    margin-top:8px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    white-space:pre-wrap;
+  }
+  .download{
+    display:inline-block;
+    margin-top:12px;
+    background:var(--accent);
+    color:#fff;
+    text-decoration:none;
+    padding:10px 18px;
+    border-radius:8px;
+    font-weight:600;
+    font-size:13.5px;
+  }
+  .hint{font-size:12px;color:#9a9da3;margin-left:32px;margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">PDF Utility</p>
+    <h1>Reorder PDF pages by barcode</h1>
+    <p class="sub">Upload a PDF where each page carries a barcode, then give the order you want (a list of barcode numbers). This tool reads the barcode on every page and rebuilds the PDF in that order — entirely in your browser, nothing is uploaded anywhere.</p>
+  </header>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Upload the PDF</div></div>
+    <p class="step-desc">Each page should contain a scannable barcode (1D formats: Code128, EAN, UPC, Code39, Codabar, ITF).</p>
+    <div class="drop" id="dropZone">
+      <input type="file" id="fileInput" accept="application/pdf">
+      <div class="drop-label"><b>Click to choose a PDF</b> or drag it here</div>
+      <div class="filename" id="filename"></div>
+    </div>
+    <div class="progress-row" id="progressRow">
+      Reading pages… <span id="progressText">0 / 0</span>
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+    </div>
+    <div class="pages" id="pagesList"></div>
+    <div class="hint" id="pagesHint" style="display:none;">Detected barcodes are shown below each page. If one is wrong or blank, edit it directly — the value here is what gets matched against your order list.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Give the desired order</div></div>
+    <p class="step-desc">Paste the barcode numbers in the order you want the final PDF to follow — one per line. Or upload a .txt/.csv file with one barcode per line.</p>
+    <textarea id="orderText" placeholder="e.g.&#10;100234&#10;100199&#10;100301&#10;..."></textarea>
+    <div class="order-file">
+      <label for="orderFile">Upload a list file instead</label>
+      <input type="file" id="orderFile" accept=".txt,.csv">
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Generate</div></div>
+    <p class="step-desc">Builds a new PDF with pages arranged in your specified order.</p>
+    <div class="generate-row">
+      <button class="btn" id="generateBtn" disabled>Generate reordered PDF</button>
+    </div>
+    <div class="result" id="resultBox"></div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let originalBytes = null;
+let pages = []; // {index (1-based), thumbUrl, barcode, detected}
+
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const filenameEl = document.getElementById('filename');
+const progressRow = document.getElementById('progressRow');
+const progressText = document.getElementById('progressText');
+const barFill = document.getElementById('barFill');
+const pagesList = document.getElementById('pagesList');
+const pagesHint = document.getElementById('pagesHint');
+const orderText = document.getElementById('orderText');
+const orderFile = document.getElementById('orderFile');
+const generateBtn = document.getElementById('generateBtn');
+const resultBox = document.getElementById('resultBox');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  if (e.dataTransfer.files.length) {
+    fileInput.files = e.dataTransfer.files;
+    handleFile(e.dataTransfer.files[0]);
+  }
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+orderFile.addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const text = await f.text();
+  orderText.value = text;
+});
+
+async function handleFile(file) {
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please choose a PDF file.');
+    return;
+  }
+  filenameEl.textContent = file.name;
+  pages = [];
+  pagesList.innerHTML = '';
+  pagesList.style.display = 'block';
+  pagesHint.style.display = 'block';
+  resultBox.innerHTML = '';
+  generateBtn.disabled = true;
+
+  const buf = await file.arrayBuffer();
+  originalBytes = buf;
+  const renderBuf = buf.slice(0);
+
+  const pdf = await pdfjsLib.getDocument({ data: renderBuf }).promise;
+  const numPages = pdf.numPages;
+  progressRow.style.display = 'block';
+  progressText.textContent = `0 / ${numPages}`;
+  barFill.style.width = '0%';
+
+  for (let i = 1; i <= numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const fullDataUrl = canvas.toDataURL('image/png');
+
+    // small thumbnail for display
+    const thumbCanvas = document.createElement('canvas');
+    const thumbW = 90;
+    const thumbH = Math.round(canvas.height * (thumbW / canvas.width));
+    thumbCanvas.width = thumbW;
+    thumbCanvas.height = thumbH;
+    thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, thumbW, thumbH);
+    const thumbUrl = thumbCanvas.toDataURL('image/jpeg', 0.7);
+
+    const code = await decodeBarcodeWithTimeout(fullDataUrl, 7000);
+
+    const pageData = { index: i, thumbUrl, barcode: code || '', detected: !!code };
+    pages.push(pageData);
+    renderPageRow(pageData);
+
+    progressText.textContent = `${i} / ${numPages}`;
+    barFill.style.width = `${(i / numPages) * 100}%`;
+  }
+
+  progressRow.style.display = 'none';
+  generateBtn.disabled = false;
+}
+
+function decodeBarcodeWithTimeout(dataUrl, ms) {
+  return Promise.race([
+    decodeBarcode(dataUrl),
+    new Promise(resolve => setTimeout(() => resolve(null), ms))
+  ]);
+}
+
+function decodeBarcode(dataUrl) {
+  return new Promise((resolve) => {
+    try {
+      Quagga.decodeSingle({
+        src: dataUrl,
+        numOfWorkers: 0,
+        inputStream: { size: 1600 },
+        locate: true,
+        decoder: {
+          readers: [
+            "code_128_reader",
+            "ean_reader",
+            "ean_8_reader",
+            "code_39_reader",
+            "upc_reader",
+            "upc_e_reader",
+            "codabar_reader",
+            "i2of5_reader"
+          ]
+        }
+      }, function (result) {
+        if (result && result.codeResult && result.codeResult.code) {
+          resolve(result.codeResult.code);
+        } else {
+          resolve(null);
+        }
+      });
+    } catch (err) {
+      resolve(null);
+    }
+  });
+}
+
+function renderPageRow(pageData) {
+  const row = document.createElement('div');
+  row.className = 'page-row';
+  row.innerHTML = `
+    <span class="page-idx">#${pageData.index}</span>
+    <img class="thumb" src="${pageData.thumbUrl}">
+    <span class="status-dot ${pageData.detected ? 'ok' : 'bad'}"></span>
+    <input class="barcode-input ${pageData.detected ? '' : 'missing'}"
+           value="${escapeAttr(pageData.barcode)}"
+           placeholder="not detected — type it manually"
+           data-index="${pageData.index}">
+  `;
+  const input = row.querySelector('.barcode-input');
+  input.addEventListener('input', (e) => {
+    const p = pages.find(p => p.index === pageData.index);
+    p.barcode = e.target.value;
+    if (p.barcode.trim()) {
+      input.classList.remove('missing');
+    } else {
+      input.classList.add('missing');
+    }
+  });
+  pagesList.appendChild(row);
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
+}
+
+generateBtn.addEventListener('click', async () => {
+  const orderLines = orderText.value
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  if (orderLines.length === 0) {
+    resultBox.innerHTML = `<div class="warn-block">Add at least one barcode number to the order list first.</div>`;
+    return;
+  }
+  if (!originalBytes) {
+    resultBox.innerHTML = `<div class="warn-block">Upload a PDF first.</div>`;
+    return;
+  }
+
+  generateBtn.disabled = true;
+  generateBtn.textContent = 'Generating…';
+
+  const used = new Set();
+  const missing = [];
+  const pageIndices = [];
+
+  for (const code of orderLines) {
+    const match = pages.find(p => p.barcode.trim() === code && !used.has(p.index));
+    if (match) {
+      pageIndices.push(match.index - 1);
+      used.add(match.index);
+    } else {
+      missing.push(code);
+    }
+  }
+
+  const unusedPages = pages.filter(p => !used.has(p.index));
+
+  let resultHtml = '';
+
+  if (pageIndices.length === 0) {
+    resultHtml += `<div class="warn-block">No barcodes in your order list matched any page. Check the detected values above and your list, then try again.</div>`;
+    resultBox.innerHTML = resultHtml;
+    generateBtn.disabled = false;
+    generateBtn.textContent = 'Generate reordered PDF';
+    return;
+  }
+
+  const srcPdf = await PDFLib.PDFDocument.load(originalBytes.slice(0));
+  const outPdf = await PDFLib.PDFDocument.create();
+  const copiedPages = await outPdf.copyPages(srcPdf, pageIndices);
+  copiedPages.forEach(p => outPdf.addPage(p));
+  const outBytes = await outPdf.save();
+  const blob = new Blob([outBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+
+  resultHtml += `<div class="ok-line">✓ Built a ${pageIndices.length}-page PDF in your specified order.</div>`;
+  resultHtml += `<a class="download" href="${url}" download="reordered.pdf">Download reordered.pdf</a>`;
+
+  if (missing.length > 0) {
+    resultHtml += `<div class="warn-block">${missing.length} barcode(s) from your list had no matching page and were skipped:\n${missing.join('\n')}</div>`;
+  }
+  if (unusedPages.length > 0) {
+    resultHtml += `<div class="warn-block">${unusedPages.length} page(s) from the PDF weren't in your order list and were left out:\n${unusedPages.map(p => `page #${p.index} (${p.barcode || 'no barcode detected'})`).join('\n')}</div>`;
+  }
+
+  resultBox.innerHTML = resultHtml;
+  generateBtn.disabled = false;
+  generateBtn.textContent = 'Generate reordered PDF';
+});
+</script>
+</body>
+</html>
