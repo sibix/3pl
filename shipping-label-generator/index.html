@@ -1,0 +1,653 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waybill — Label Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@600;800&family=JetBrains+Mono:wght@400;500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --navy:#131F30;
+    --navy-2:#1C2E47;
+    --paper:#EFEDE6;
+    --paper-2:#E4E1D6;
+    --ink:#1B1B18;
+    --steel:#5C6B73;
+    --steel-light:#94A3AB;
+    --orange:#E8571F;
+    --orange-dark:#B8420F;
+    --line:#C9C4B4;
+    --white:#FBFAF7;
+    --mono: 'JetBrains Mono', monospace;
+    --disp: 'Archivo Expanded', sans-serif;
+    --body: 'Archivo', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--navy);
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(232,87,31,0.10), transparent 45%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 12px);
+    color:var(--paper);
+    font-family:var(--body);
+    min-height:100vh;
+  }
+
+  /* ===== Header / masthead ===== */
+  .masthead{
+    padding:38px 32px 28px;
+    border-bottom:2px solid rgba(239,237,230,0.15);
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:18px;
+    max-width:1180px;
+    margin:0 auto;
+  }
+  .masthead-left{display:flex;align-items:center;gap:16px;}
+  .stamp{
+    width:56px;height:56px;
+    border:2.5px solid var(--orange);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    transform:rotate(-8deg);
+    flex-shrink:0;
+  }
+  .stamp svg{width:28px;height:28px;stroke:var(--orange);}
+  h1{
+    font-family:var(--disp);
+    font-weight:800;
+    font-size:30px;
+    letter-spacing:0.5px;
+    margin:0;
+    text-transform:uppercase;
+    color:var(--white);
+  }
+  .tagline{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--steel-light);
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-top:4px;
+  }
+  .doc-code{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--steel-light);
+    text-align:right;
+    line-height:1.6;
+  }
+  .doc-code b{color:var(--orange);}
+
+  /* ===== Layout ===== */
+  .wrap{max-width:1180px;margin:0 auto;padding:36px 32px 80px;}
+  .grid{display:grid;grid-template-columns:380px 1fr;gap:28px;align-items:start;}
+  @media (max-width:900px){.grid{grid-template-columns:1fr;}}
+
+  .panel{
+    background:var(--white);
+    color:var(--ink);
+    border-radius:2px;
+    position:relative;
+  }
+  .panel::before{
+    content:"";
+    position:absolute;top:0;left:0;right:0;height:5px;
+    background:repeating-linear-gradient(90deg, var(--navy) 0 14px, transparent 14px 22px);
+  }
+  .panel-body{padding:26px 24px 24px;}
+  .panel + .panel{margin-top:24px;}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:var(--steel);
+    margin:0 0 6px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .eyebrow::after{content:"";flex:1;height:1px;background:var(--line);}
+  h2{
+    font-family:var(--disp);
+    font-size:18px;
+    text-transform:uppercase;
+    margin:0 0 16px;
+    letter-spacing:0.3px;
+  }
+
+  /* dropzone */
+  .dropzone{
+    border:2px dashed var(--steel);
+    border-radius:2px;
+    padding:28px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    background:var(--paper);
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--orange);background:#f4ede6;}
+  .dropzone svg{width:30px;height:30px;stroke:var(--steel);margin-bottom:8px;}
+  .dropzone p{margin:0;font-size:13px;color:var(--steel);}
+  .dropzone .fname{font-family:var(--mono);font-weight:600;color:var(--ink);font-size:13px;margin-top:6px;word-break:break-all;}
+  input[type=file]{display:none;}
+
+  .status-row{
+    display:flex;justify-content:space-between;
+    font-family:var(--mono);font-size:12px;color:var(--steel);
+    margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+  }
+  .status-row b{color:var(--ink);}
+
+  label.field-label{
+    display:block;font-family:var(--mono);font-size:11px;
+    text-transform:uppercase;letter-spacing:1px;color:var(--steel);
+    margin:14px 0 6px;
+  }
+  textarea{
+    width:100%;
+    font-family:var(--mono);
+    font-size:13px;
+    line-height:1.55;
+    padding:10px 12px;
+    border:1.5px solid var(--line);
+    border-radius:2px;
+    resize:vertical;
+    color:var(--ink);
+    background:var(--paper);
+  }
+  textarea:focus{outline:none;border-color:var(--orange);}
+
+  .btn{
+    width:100%;
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    padding:14px 18px;
+    border:none;
+    border-radius:2px;
+    cursor:pointer;
+    margin-top:18px;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    transition:transform .1s, box-shadow .15s;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--orange);color:var(--white);}
+  .btn-primary:hover{box-shadow:0 4px 14px rgba(232,87,31,0.35);}
+  .btn-primary:disabled{background:var(--steel-light);cursor:not-allowed;box-shadow:none;}
+  .btn svg{width:16px;height:16px;}
+
+  .count-badge{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--steel);
+    margin-top:10px;
+    text-align:center;
+  }
+  .count-badge b{color:var(--orange);font-size:15px;}
+
+  /* preview */
+  .preview-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .scale-note{font-family:var(--mono);font-size:11px;color:var(--steel-light);letter-spacing:0.5px;}
+
+  .label-scroll{
+    max-height:640px;
+    overflow-y:auto;
+    padding:4px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+    gap:20px;
+  }
+  .empty-state{
+    padding:70px 20px;
+    text-align:center;
+    color:var(--steel);
+    font-family:var(--mono);
+    font-size:13px;
+    border:1.5px dashed var(--line);
+  }
+
+  /* the label card itself — mimics 4in x 3in ratio */
+  .label-card{
+    aspect-ratio:4/3;
+    border:1.5px solid var(--ink);
+    background:var(--white);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    font-family:var(--body);
+    color:var(--ink);
+    overflow:hidden;
+  }
+  .label-card .from-block{
+    padding:7px 10px 5px;
+    border-bottom:1px dashed var(--line);
+    font-family:var(--mono);
+    font-size:8.5px;
+    line-height:1.35;
+    color:var(--steel);
+  }
+  .label-card .from-block .lbl{
+    font-weight:700;color:var(--ink);letter-spacing:1px;font-size:7.5px;
+  }
+  .label-card .to-block{
+    padding:9px 10px 6px;
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:2px;
+  }
+  .label-card .to-block .lbl{
+    font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:1.5px;color:#000;margin-bottom:3px;
+  }
+  .label-card .name{
+    font-family:var(--disp);font-weight:800;font-size:19px;
+    text-transform:uppercase;line-height:1.12;letter-spacing:0.2px;color:#000;
+  }
+  .label-card .addr{
+    font-size:10.5px;line-height:1.32;color:#000;margin-top:3px;
+  }
+  .label-card .meta-row{
+    display:flex;justify-content:space-between;
+    font-family:var(--mono);font-size:13px;font-weight:700;margin-top:7px;color:#000;
+  }
+  .label-card .meta-row b{color:#000;font-size:14px;}
+  .label-card .cod-bar{
+    background:#000;
+    color:#fff;
+    padding:6px 10px 8px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;
+  }
+  .label-card .cod-bar .cod-tag{
+    font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:2px;color:#fff;
+  }
+  .label-card .cod-bar .cod-amt{
+    font-family:var(--disp);font-weight:800;font-size:24px;color:#fff;
+    letter-spacing:0.5px;
+  }
+  .label-card .prepaid-bar{
+    background:#fff;
+    color:#000;
+    border-top:2px solid #000;
+    padding:6px 10px;
+    font-family:var(--mono);font-size:10px;font-weight:700;
+    letter-spacing:2px;text-align:center;
+  }
+  .label-index{
+    position:absolute;top:4px;right:6px;
+    font-family:var(--mono);font-size:8px;color:var(--steel-light);
+  }
+
+  footer{
+    max-width:1180px;margin:0 auto;padding:0 32px 40px;
+    font-family:var(--mono);font-size:11px;color:var(--steel-light);
+    letter-spacing:0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="masthead-left">
+    <div class="stamp">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6M3 8v10a1 1 0 001 1h16a1 1 0 001-1V8M3 8l9-5 9 5"/></svg>
+    </div>
+    <div>
+      <h1>Waybill Print</h1>
+      <div class="tagline">Consignment Label Generator · 4 × 3 in</div>
+    </div>
+  </div>
+  <div class="doc-code">FORM <b>WB-04</b> / REV 01<br>OUTPUT — MULTI-PAGE PDF</div>
+</div>
+
+<div class="wrap">
+  <div class="grid">
+
+    <!-- LEFT: controls -->
+    <div>
+      <div class="panel">
+        <div class="panel-body">
+          <div class="eyebrow">Step 01</div>
+          <h2>Load manifest</h2>
+
+          <div class="dropzone" id="dropzone">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+            <p>Drop your .xlsx sheet here<br>or click to browse</p>
+            <div class="fname" id="fname"></div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls">
+          </div>
+
+          <div class="status-row">
+            <span>Rows found</span><b id="rowCount">—</b>
+          </div>
+          <div class="status-row">
+            <span>With COD</span><b id="codCount">—</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-body">
+          <div class="eyebrow">Step 02</div>
+          <h2>From address</h2>
+          <label class="field-label">Printed on every label</label>
+          <textarea id="fromAddress" rows="4">Med And Media Co
+Above Faceca, Tog Road 683501
+Mob: 96336 47472</textarea>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-body">
+          <div class="eyebrow">Step 03</div>
+          <h2>Generate</h2>
+          <button class="btn btn-primary" id="genBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
+            Download PDF
+          </button>
+          <div class="count-badge" id="genNote">Upload a sheet to enable export — <b id="genCount">0</b> labels ready</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: preview -->
+    <div class="panel">
+      <div class="panel-body">
+        <div class="preview-head">
+          <div>
+            <div class="eyebrow">Preview</div>
+            <h2 style="margin-bottom:0;">Label sheet</h2>
+          </div>
+          <div class="scale-note">Each card = 4in × 3in at print size</div>
+        </div>
+        <div class="label-scroll" id="labelScroll">
+          <div class="empty-state" style="grid-column:1/-1;">
+            No data loaded yet.<br>Upload an Excel sheet on the left to see labels here.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>Destination Name · Destination Address Line 1 · Destination Address Line 2 · Destination Phone · Destination Pincode · Cod Amount</footer>
+
+<script>
+let rows = [];
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fnameEl = document.getElementById('fname');
+const rowCountEl = document.getElementById('rowCount');
+const codCountEl = document.getElementById('codCount');
+const genBtn = document.getElementById('genBtn');
+const genCount = document.getElementById('genCount');
+const genNote = document.getElementById('genNote');
+const labelScroll = document.getElementById('labelScroll');
+const fromAddressEl = document.getElementById('fromAddress');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+function normKey(k){
+  return String(k || '').trim().toLowerCase().replace(/\s+/g,' ');
+}
+
+// Map of normalized expected keys -> canonical field
+const FIELD_MAP = {
+  'destination name':'name',
+  'destination address line 1':'addr1',
+  'destination address line 2':'addr2',
+  'destination phone':'phone',
+  'destination pincode':'pincode',
+  'cod amount':'cod'
+};
+
+function handleFile(file){
+  fnameEl.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
+
+      rows = json.map(r => {
+        const out = {};
+        Object.keys(r).forEach(k => {
+          const nk = normKey(k);
+          if (FIELD_MAP[nk]) out[FIELD_MAP[nk]] = r[k];
+        });
+        return out;
+      }).filter(r => r.name || r.addr1); // skip fully empty rows
+
+      renderPreview();
+      updateStatus();
+    }catch(err){
+      alert('Could not read this file. Please upload a valid .xlsx sheet.\n\n' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function updateStatus(){
+  rowCountEl.textContent = rows.length;
+  const codRows = rows.filter(r => hasCod(r)).length;
+  codCountEl.textContent = codRows;
+  genCount.textContent = rows.length;
+  genBtn.disabled = rows.length === 0;
+  genNote.innerHTML = rows.length
+    ? `Ready to export — <b>${rows.length}</b> label${rows.length>1?'s':''}`
+    : `Upload a sheet to enable export — <b>0</b> labels ready`;
+}
+
+function hasCod(r){
+  const v = r.cod;
+  if (v === undefined || v === null || v === '') return false;
+  const n = Number(v);
+  return !isNaN(n) && n > 0;
+}
+
+function fmtAmount(v){
+  const n = Number(v);
+  if (isNaN(n)) return 'Rs. ' + String(v);
+  return 'Rs. ' + n.toLocaleString('en-IN', {maximumFractionDigits: 2});
+}
+
+function esc(s){
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderPreview(){
+  if (!rows.length){
+    labelScroll.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">No data loaded yet.<br>Upload an Excel sheet on the left to see labels here.</div>`;
+    return;
+  }
+  const fromLines = fromAddressEl.value.split('\n').filter(l=>l.trim()!=='');
+  labelScroll.innerHTML = rows.map((r, i) => {
+    const cod = hasCod(r);
+    const addr2 = r.addr2 ? String(r.addr2).replace(/\n/g,', ') : '';
+    return `
+    <div class="label-card">
+      <div class="label-index">#${i+1}</div>
+      <div class="from-block">
+        <span class="lbl">FROM</span> ${fromLines.map(esc).join(' · ')}
+      </div>
+      <div class="to-block">
+        <div class="lbl">DELIVER TO</div>
+        <div class="name">${esc(r.name)}</div>
+        <div class="addr">${esc(r.addr1)}${addr2 ? ', ' + esc(addr2) : ''}</div>
+        <div class="meta-row"><span>PH: <b>${esc(r.phone)}</b></span><span>PIN: <b>${esc(r.pincode)}</b></span></div>
+      </div>
+      ${cod
+        ? `<div class="cod-bar"><span class="cod-tag">CASH ON DELIVERY</span><span class="cod-amt">${fmtAmount(r.cod)}</span></div>`
+        : `<div class="prepaid-bar">PREPAID — NO COD</div>`
+      }
+    </div>`;
+  }).join('');
+}
+
+fromAddressEl.addEventListener('input', renderPreview);
+
+genBtn.addEventListener('click', generatePDF);
+
+// Shrinks a bold-helvetica string to fit within maxWidth (inches), returns the font size used.
+function fitFontSize(doc, text, maxWidth, startSize, minSize){
+  let size = startSize;
+  doc.setFont('helvetica', 'bold');
+  while (size > minSize){
+    doc.setFontSize(size);
+    if (doc.getTextWidth(text) <= maxWidth) break;
+    size -= 0.5;
+  }
+  return size;
+}
+
+function generatePDF(){
+  if (!rows.length) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'landscape', unit:'in', format:[4,3] });
+
+  const W = 4, H = 3;
+  const marginX = 0.20;
+  const innerW = W - marginX*2;
+  const fromLines = fromAddressEl.value.split('\n').filter(l=>l.trim()!=='');
+
+  // Bottom bar is a FIXED block (position independent of address length) so the
+  // COD amount can never be pushed off the page.
+  const barH = 0.62;
+  const barY = H - 0.09 - barH;
+
+  rows.forEach((r, idx) => {
+    if (idx > 0) doc.addPage([4,3], 'landscape');
+
+    // outer border — solid black, thermal-friendly
+    doc.setDrawColor(0,0,0);
+    doc.setLineWidth(0.018);
+    doc.rect(0.05, 0.05, W-0.10, H-0.10);
+
+    let y = 0.19;
+
+    // FROM block
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(0,0,0);
+    doc.text('FROM', marginX, y);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7.5);
+    let fy = y + 0.11;
+    fromLines.forEach(line => {
+      doc.text(line, marginX, fy);
+      fy += 0.105;
+    });
+
+    // divider
+    const divY = fy + 0.05;
+    doc.setLineDashPattern([0.03, 0.02], 0);
+    doc.setDrawColor(0,0,0);
+    doc.setLineWidth(0.008);
+    doc.line(marginX, divY, W-marginX, divY);
+    doc.setLineDashPattern([], 0);
+
+    // TO block — everything black, larger type
+    let ty = divY + 0.20;
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(0,0,0);
+    doc.text('DELIVER TO', marginX, ty);
+
+    ty += 0.21;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(0,0,0);
+    let nameLines = doc.splitTextToSize(String(r.name || '').toUpperCase(), innerW);
+    nameLines = nameLines.slice(0, 2);
+    nameLines.forEach(line => {
+      doc.text(line, marginX, ty);
+      ty += 0.185;
+    });
+
+    ty += 0.05;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const addr2 = r.addr2 ? String(r.addr2).replace(/\n/g, ', ') : '';
+    const fullAddr = [r.addr1, addr2].filter(Boolean).join(', ');
+    const addrLines = doc.splitTextToSize(fullAddr, innerW).slice(0, 2);
+    addrLines.forEach(line => {
+      doc.text(line, marginX, ty);
+      ty += 0.14;
+    });
+
+    // Phone & Pincode — big and bold, clamped above the bottom bar
+    ty = Math.min(ty + 0.12, barY - 0.10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(0,0,0);
+    doc.text(`PH: ${r.phone || ''}`, marginX, ty);
+    doc.text(`PIN: ${r.pincode || ''}`, W - marginX, ty, { align:'right' });
+
+    // Bottom bar: COD or Prepaid — fixed position, amount auto-shrinks to always fit
+    if (hasCod(r)){
+      doc.setFillColor(0,0,0);
+      doc.rect(0.05, barY, W-0.10, barH, 'F');
+
+      doc.setFont('courier', 'bold');
+      const codLabel = 'CASH ON DELIVERY';
+      const maxLabelWidth = W - 0.10 - 0.24;
+      let labelSize = 10.5;
+      doc.setFontSize(labelSize);
+      while (labelSize > 7 && doc.getTextWidth(codLabel) > maxLabelWidth){
+        labelSize -= 0.5;
+        doc.setFontSize(labelSize);
+      }
+      doc.setTextColor(255,255,255);
+      doc.text(codLabel, W/2, barY + 0.20, { align:'center' });
+
+      const amtText = fmtAmount(r.cod);
+      const maxAmtWidth = W - 0.10 - 0.24; // padding inside the bar
+      const size = fitFontSize(doc, amtText, maxAmtWidth, 26, 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(size);
+      doc.setTextColor(255,255,255);
+      doc.text(amtText, W/2, barY + barH - 0.14, { align:'center' });
+    } else {
+      doc.setDrawColor(0,0,0);
+      doc.setLineWidth(0.02);
+      doc.line(0.05, barY, W-0.05, barY);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(0,0,0);
+      doc.text('PREPAID — NO COD', W/2, barY + barH/2 + 0.06, { align:'center' });
+    }
+  });
+
+  doc.save('shipping-labels.pdf');
+}
+</script>
+</body>
+</html>
